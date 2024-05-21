@@ -219,6 +219,7 @@ npm run deploy
 ```
 
 Or you can click the button below:
+
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/WeWeb-Public/dynamic-metadata-with-cloudflare-worker)
 
 ## Contributing
