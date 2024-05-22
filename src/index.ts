@@ -23,9 +23,7 @@ export default {
 
 		// Function to check if the URL matches the page data pattern (For the WeWeb app)
 		function isPageData(url) {
-			// This regular expression matches "/event/" followed by one or more non-slash characters
-			// const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
-			const pattern = new RegExp(patterns.pageData);
+			const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
 			return pattern.test(url);
 		}
 

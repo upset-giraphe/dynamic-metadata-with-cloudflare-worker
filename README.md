@@ -8,25 +8,56 @@ When creating dynamic pages in WeWeb, such as `www.myapp.com/events/40`, all pag
 
 This Cloudflare Worker serves as a reverse proxy server. It intercepts requests for dynamic pages, fetches the specific metadata from an endpoint, and updates the HTML file before sending it back to the browser. This effectively enables server-side rendering of metadata for better SEO and social media sharing.
 
-## Configuration
+## Get Started
 
-The configuration is managed through a `config.js` file at the root of the project directory. This file contains settings for the source domain, metadata endpoint, and URL patterns.
+### Renaming the Worker
 
-### Configuration File (`config.js`)
+You can change the name of your worker in the `wrangler.toml` file. Locate the `name` field and modify it as needed. For example:
+
+```toml
+name = "new-name-for-my-worker"
+main = "src/index.ts"
+compatibility_date = "2024-04-19"
+compatibility_flags = ["nodejs_compat"]
+```
+
+### Updating the Config File
+
+In the config.js file, update the WeWeb app link, the endpoint that returns metadata, and the pattern for the dynamic page.
 
 ```javascript
 export const config = {
-  domainSource: "https://f69a71f6-9fd8-443b-a040-78beb5d404d4.weweb-preview.io",
-  metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:8wD10mRd",
+  domainSource: "https://f69a71f6-9fd8-443b-a040-78beb5d404d4.weweb-preview.io", // Your WeWeb app link
+  metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:8wD10mRd", // Link of the endpoint that returns the metadata
   patterns: {
-    dynamicPage: "/event/[^/]+",
-    pageData: "/public/data/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.json"
+    dynamicPage: "/event/[^/]+"
   }
 };
 ```
+
 - domainSource: The base URL for fetching the original content.
-- metaDataEndpoint: The API endpoint for fetching metadata.
-- patterns: Regular expressions used to identify dynamic pages and page data.
+- metaDataEndpoint: The API endpoint for fetching metadata. The endpoint should return an object like this:
+```json
+{
+  "title": "Festival",
+  "description": "<p>Test Our annual festival is back, promising an array of activities for every age and interest. From thrilling amusement rides and live performances to a marketplace brimming with handcrafted goods, there's joy and discovery around every corner. Learn from artisans during workshops, indulge in diverse culinary delights, and immerse yourself in the festive atmosphere that celebrates our community's spirit.</p>",
+  "image": "https://xeo6-2sgh-ehgj.n7.xano.io/vault/UUJkO96O/eQbZuT4a7I7Iks60ScIyEXlKZ-s/u16buw../hanny-naibaho-aWXVxy8BSzc-unsplash.jpg",
+  "keywords": "festival music live"
+}
+```
+- patterns: Regular expressions used to identify dynamic pages and page data. For example, if the dynamic page has a URL like www.myapp.com/event/40, it should be "/event/[^/]+". If the link is www.myapp.com/article/name-of-the-article, it should be "/article/[^/]+".
+
+## Deployment
+To deploy the worker, use the Cloudflare Wrangler CLI. Ensure you have the Cloudflare account and Wrangler CLI set up, then run:
+
+```sh
+npm run deploy
+```
+
+Or you can click the button below:
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/WeWeb-Public/dynamic-metadata-with-cloudflare-worker)
+
 
 ## Worker Script
 The main logic of the worker is contained in index.js. This script fetches and modifies web pages based on the URL patterns defined in the configuration file.
@@ -210,17 +241,6 @@ Contains configuration settings such as domainSource, metaDataEndpoint, and rege
 3. Error Handling:
 - Added checks to ensure url.searchParams and other potentially undefined objects are handled properly.
 - Uses console.log statements to provide useful debugging information and track the flow of execution.
-
-## Deployment
-To deploy the worker, use the Cloudflare Wrangler CLI. Ensure you have the Cloudflare account and Wrangler CLI set up, then run:
-
-```sh
-npm run deploy
-```
-
-Or you can click the button below:
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/WeWeb-Public/dynamic-metadata-with-cloudflare-worker)
 
 ## Contributing
 Feel free to fork this repository and submit
