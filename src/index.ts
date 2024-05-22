@@ -27,6 +27,20 @@ export default {
 			return pattern.test(url);
 		}
 
+		async function requestMetadata(url){
+			// Remove any trailing slash from the URL
+			const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+
+			// Split the trimmed URL by '/' and get the last part: The id
+			const parts = trimmedUrl.split('/');
+			const id = parts[parts.length - 1];
+
+			// Fetch metadata from the API endpoint
+			const metaDataResponse = await fetch(`${metaDataEndpoint}/${id}`);
+			const metadata = await metaDataResponse.json();
+			return metadata
+		}
+
 		// Handle dynamic page requests
 		if (isDynamicPage(url.pathname)) {
 			console.log("Dynamic page detected:", url.pathname);
@@ -34,11 +48,7 @@ export default {
 			// Fetch the source page content
 			let source = await fetch(`${domainSource}${url.pathname}`);
 
-			// Fetch metadata from the API endpoint
-			console.log("test : ", url.searchParams.get('path'))
-			let pathname = url.pathname + (url.pathname.endsWith('/') ? '' : '/');
-			const metaDataResponse = await fetch(`${metaDataEndpoint}${pathname}meta`);
-			const metadata = await metaDataResponse.json();
+			const metadata = await requestMetadata(url.pathname)
 			console.log("Metadata fetched:", metadata);
 
 			// Create a custom header handler with the fetched metadata
@@ -57,11 +67,9 @@ export default {
 			const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
 			let sourceData = await sourceResponse.json();
 
-			// Fetch metadata from the API endpoint
 			let pathname = url.searchParams.get('path') + (url.searchParams.get('path').endsWith('/') ? '' : '/');
-			const metaDataResponse = await fetch(`${metaDataEndpoint}${pathname}meta`);
-			const metadata = await metaDataResponse.json();
-			console.log("Metadata fetched for page data:", metadata);
+			const metadata = await requestMetadata(pathname)
+			console.log("Metadata fetched:", metadata);
 
 			// Ensure nested objects exist in the source data
 			sourceData.page = sourceData.page || {};
