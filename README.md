@@ -40,7 +40,7 @@ export const config = {
 ```json
 {
   "title": "Festival",
-  "description": "<p>Test Our annual festival is back, promising an array of activities for every age and interest. From thrilling amusement rides and live performances to a marketplace brimming with handcrafted goods, there's joy and discovery around every corner. Learn from artisans during workshops, indulge in diverse culinary delights, and immerse yourself in the festive atmosphere that celebrates our community's spirit.</p>",
+  "description": "Test Our annual festival is back, promising an array of activities for every age and interest. From thrilling amusement rides and live performances to a marketplace brimming with handcrafted goods, there's joy and discovery around every corner. Learn from artisans during workshops, indulge in diverse culinary delights, and immerse yourself in the festive atmosphere that celebrates our community's spirit.",
   "image": "https://xeo6-2sgh-ehgj.n7.xano.io/vault/UUJkO96O/eQbZuT4a7I7Iks60ScIyEXlKZ-s/u16buw../hanny-naibaho-aWXVxy8BSzc-unsplash.jpg",
   "keywords": "festival music live"
 }
