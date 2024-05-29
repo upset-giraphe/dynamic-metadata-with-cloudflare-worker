@@ -27,18 +27,22 @@ export default {
 			return pattern.test(url);
 		}
 
-		async function requestMetadata(url){
+		async function requestMetadata(url) {
 			// Remove any trailing slash from the URL
 			const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-
+		
 			// Split the trimmed URL by '/' and get the last part: The id
 			const parts = trimmedUrl.split('/');
 			const id = parts[parts.length - 1];
-
+		
+			// Replace the placeholder in metaDataEndpoint with the actual id
+			const placeholderPattern = /{([^}]+)}/;
+			const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
+		
 			// Fetch metadata from the API endpoint
-			const metaDataResponse = await fetch(`${metaDataEndpoint}/${id}`);
+			const metaDataResponse = await fetch(metaDataEndpointWithId);
 			const metadata = await metaDataResponse.json();
-			return metadata
+			return metadata;
 		}
 
 		// Handle dynamic page requests
