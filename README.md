@@ -4,7 +4,7 @@ This project demonstrates a Cloudflare Worker that acts as a reverse proxy serve
 
 ## Use Case
 
-When creating dynamic pages in WeWeb, such as `www.myapp.com/events/40`, all pages share the same metadata configured in the editor. However, you may need different metadata (title, description, keywords, and thumbnails) for each page based on the URL parameter (e.g., event ID). Since WeWeb apps are front-end only (SPA), we need a "backend module" to handle dynamic metadata.
+When creating dynamic pages in WeWeb, such as www.myapp.com/events/40, all pages share the same metadata configured in the editor. However, you may need different metadata (title, description, keywords, and thumbnails) for each page based on the URL parameter (e.g., event ID). Since WeWeb apps are front-end only (SPA), we need a "backend module" to handle dynamic metadata.
 
 This Cloudflare Worker serves as a reverse proxy server. It intercepts requests for dynamic pages, fetches the specific metadata from an endpoint, and updates the HTML file before sending it back to the browser. This effectively enables server-side rendering of metadata for better SEO and social media sharing.
 
@@ -23,16 +23,24 @@ compatibility_flags = ["nodejs_compat"]
 
 ### Updating the Config File
 
-In the config.js file, update the WeWeb app link, the endpoint that returns metadata, and the pattern for the dynamic page.
+In the config.js file, update the WeWeb app link, the endpoint that returns metadata, and the patterns for the dynamic pages.
 
 ```javascript
 export const config = {
-  domainSource: "https://f69a71f6-9fd8-443b-a040-78beb5d404d4.weweb-preview.io", // Your WeWeb app link
-  metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:8wD10mRd", // Link of the endpoint that returns the metadata
-  patterns: {
-    dynamicPage: "/event/[^/]+"
-  }
+  domainSource: "https://f69a71f6-9fd8-443b-a040-78beb5d404d4.weweb-preview.io", // Your WeWeb app preview link
+  patterns: [
+    {
+      pattern: "/event/[^/]+",
+      metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:8wD10mRd/event/{id}/meta"
+    },
+    {
+      pattern: "/team/profile/[^/]+",
+      metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:LjwxezTv/team/profile/{profile_id}/meta"
+    }
+    // Add more patterns and their metadata endpoints as needed
+  ]
 };
+
 ```
 
 - domainSource: The base URL for fetching the original content.
@@ -66,44 +74,65 @@ The main logic of the worker is contained in index.js. This script fetches and m
 The fetch event handler processes incoming requests, checks if the request URL matches specific patterns, and performs the necessary modifications.
 
 ```javascript
-import { config } from './config.js';
+import { config } from '../config.js';
 
 export default {
   async fetch(request, env, ctx) {
     // Extracting configuration values
     const domainSource = config.domainSource;
-    const metaDataEndpoint = config.metaDataEndpoint;
     const patterns = config.patterns;
 
     console.log("Worker started");
 
     // Parse the request URL
     const url = new URL(request.url);
+    const referer = request.headers.get('Referer');
 
-    // Function to check if the URL matches the dynamic page pattern
-    function isDynamicPage(url) {
-      const pattern = new RegExp(patterns.dynamicPage);
-      let pathname = url.pathname + (url.pathname.endsWith('/') ? '' : '/');
-      return pattern.test(pathname);
+    // Function to get the pattern configuration that matches the URL
+    function getPatternConfig(url) {
+      for (const patternConfig of patterns) {
+        const regex = new RegExp(patternConfig.pattern);
+        let pathname = url + (url.endsWith('/') ? '' : '/');
+        if (regex.test(pathname)) {
+          return patternConfig;
+        }
+      }
+      return null;
     }
 
-    // Function to check if the URL matches the page data pattern
+    // Function to check if the URL matches the page data pattern (For the WeWeb app)
     function isPageData(url) {
-      const pattern = new RegExp(patterns.pageData);
-      return pattern.test(url.pathname);
+      const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
+      return pattern.test(url);
+    }
+
+    async function requestMetadata(url, metaDataEndpoint) {
+      // Remove any trailing slash from the URL
+      const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+    
+      // Split the trimmed URL by '/' and get the last part: The id
+      const parts = trimmedUrl.split('/');
+      const id = parts[parts.length - 1];
+    
+      // Replace the placeholder in metaDataEndpoint with the actual id
+      const placeholderPattern = /{([^}]+)}/;
+      const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
+    
+      // Fetch metadata from the API endpoint
+      const metaDataResponse = await fetch(metaDataEndpointWithId);
+      const metadata = await metaDataResponse.json();
+      return metadata;
     }
 
     // Handle dynamic page requests
-    if (isDynamicPage(url.pathname)) {
+    const patternConfig = getPatternConfig(url.pathname);
+    if (patternConfig) {
       console.log("Dynamic page detected:", url.pathname);
 
       // Fetch the source page content
       let source = await fetch(`${domainSource}${url.pathname}`);
 
-      // Fetch metadata from the API endpoint
-      let pathname = url.pathname + (url.pathname.endsWith('/') ? '' : '/');
-      const metaDataResponse = await fetch(`${metaDataEndpoint}${pathname}meta`);
-      const metadata = await metaDataResponse.json();
+      const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
       console.log("Metadata fetched:", metadata);
 
       // Create a custom header handler with the fetched metadata
@@ -114,47 +143,55 @@ export default {
         .on('*', customHeaderHandler)
         .transform(source);
 
-    // Handle page data requests
-    } else if (isPageData(url.pathname) && isDynamicPage(url.searchParams.get('path') || '')) {
-      console.log("Page data detected:", url.pathname);
+    // Handle page data requests for the WeWeb app
+    } else if (isPageData(url.pathname)) {
+        console.log("Page data detected:", url.pathname);
+        console.log("Referer:", referer);
 
       // Fetch the source data content
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
       let sourceData = await sourceResponse.json();
 
-      // Fetch metadata from the API endpoint
-      let pathname = (url.searchParams.get('path') || '') + ((url.searchParams.get('path') || '').endsWith('/') ? '' : '/');
-      console.log('Get the metadata from API: ', `${metaDataEndpoint}${pathname}meta`);
-      const metaDataResponse = await fetch(`${metaDataEndpoint}${pathname}meta`);
-      const metadata = await metaDataResponse.json();
-      console.log("Metadata fetched for page data:", metadata);
+      let pathname = referer;
+      pathname = pathname ? pathname + (pathname.endsWith('/') ? '' : '/') : null;
+      if (pathname !== null) {
+        const patternConfigForPageData = getPatternConfig(pathname);
+        if (patternConfigForPageData) {
+          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
+          console.log("Metadata fetched:", metadata);
 
-      // Ensure nested objects exist in the source data
-      sourceData.page = sourceData.page || {};
-      sourceData.page.title = sourceData.page.title || {};
-      sourceData.page.meta = sourceData.page.meta || {};
-      sourceData.page.meta.desc = sourceData.page.meta.desc || {};
-      sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
-      sourceData.page.socialTitle = sourceData.page.socialTitle || {};
-      sourceData.page.socialDesc = sourceData.page.socialDesc || {};
+          // Ensure nested objects exist in the source data
+          sourceData.page = sourceData.page || {};
+          sourceData.page.title = sourceData.page.title || {};
+          sourceData.page.meta = sourceData.page.meta || {};
+          sourceData.page.meta.desc = sourceData.page.meta.desc || {};
+          sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
+          sourceData.page.socialTitle = sourceData.page.socialTitle || {};
+          sourceData.page.socialDesc = sourceData.page.socialDesc || {};
 
-      // Update source data with the fetched metadata
-      if (metadata.title) {
-        sourceData.page.title.en = metadata.title;
-        sourceData.page.socialTitle.en = metadata.title;
-      }
-      if (metadata.description) {
-        sourceData.page.meta.desc.en = metadata.description;
-        sourceData.page.socialDesc.en = metadata.description;
-      }
-      if (metadata.keywords) {
-        sourceData.page.meta.keywords.en = metadata.keywords;
-      }
+          // Update source data with the fetched metadata
+          if (metadata.title) {
+            sourceData.page.title.en = metadata.title;
+            sourceData.page.socialTitle.en = metadata.title;
+          }
+          if (metadata.description) {
+            sourceData.page.meta.desc.en = metadata.description;
+            sourceData.page.socialDesc.en = metadata.description;
+          }
+          if (metadata.image) {
+            sourceData.page.metaImage = metadata.image;
+          }
+          if (metadata.keywords) {
+            sourceData.page.meta.keywords.en = metadata.keywords;
+          }
 
-      // Return the modified JSON object
-      return new Response(JSON.stringify(sourceData), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+          console.log("returning file: ", JSON.stringify(sourceData));
+          // Return the modified JSON object
+          return new Response(JSON.stringify(sourceData), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
     }
 
     // If the URL does not match any patterns, fetch and return the original content
@@ -174,10 +211,12 @@ class CustomHeaderHandler {
   }
 
   element(element) {
+    // Replace the <title> tag content
     if (element.tagName == "title") {
       console.log('Replacing title tag content');
       element.setInnerContent(this.metadata.title);
     }
+    // Replace meta tags content
     if (element.tagName == "meta") {
       const name = element.getAttribute("name");
       switch (name) {
@@ -187,8 +226,17 @@ class CustomHeaderHandler {
         case "description":
           element.setAttribute("content", this.metadata.description);
           break;
+        case "image":
+          element.setAttribute("content", this.metadata.image);
+          break;
         case "keywords":
           element.setAttribute("content", this.metadata.keywords);
+          break;
+        case "twitter:title":
+          element.setAttribute("content", this.metadata.title);
+          break;
+        case "twitter:description":
+          element.setAttribute("content", this.metadata.description);
           break;
       }
 
@@ -199,6 +247,9 @@ class CustomHeaderHandler {
           break;
         case "description":
           element.setAttribute("content", this.metadata.description);
+          break;
+        case "image":
+          element.setAttribute("content", this.metadata.image);
           break;
       }
 
@@ -212,6 +263,10 @@ class CustomHeaderHandler {
           console.log('Replacing og:description');
           element.setAttribute("content", this.metadata.description);
           break;
+        case "og:image":
+          console.log('Replacing og:image');
+          element.setAttribute("content", this.metadata.image);
+          break;
       }
     }
   }
@@ -220,7 +275,8 @@ class CustomHeaderHandler {
 
 ### Explanation
 1. Configuration File (config.js):
-Contains configuration settings such as domainSource, metaDataEndpoint, and regex patterns for dynamicPage and pageData.
+- Contains configuration settings such as domainSource and an array of patterns for dynamic pages.
+- Each pattern includes a regex to match the URL and an endpoint to fetch metadata.
 
 2. Worker Script (index.js):
 - Imports Configuration: Imports settings from config.js.
