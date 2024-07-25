@@ -7,7 +7,7 @@ export const config = {
       },
       {
           pattern: "/team/profile/[^/]+",
-          metaDataEndpoint: "https://support-data.weweb.io/api:LjwxezTv/team/profile/{id}/meta"
+          metaDataEndpoint: "https://xeo6-2sgh-ehgj.n7.xano.io/api:LjwxezTv/team/profile/{profile_id}/meta"
       }
       // Add more patterns and their metadata endpoints as needed
   ]
