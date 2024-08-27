@@ -10,7 +10,7 @@ export default {
 
     // Parse the request URL
     const url = new URL(request.url);
-    const referer = request.headers.get('Referer')
+    const referer = request.headers.get('Referer');
 
     // Function to get the pattern configuration that matches the URL
     function getPatternConfig(url) {
@@ -30,22 +30,40 @@ export default {
       return pattern.test(url);
     }
 
-    async function requestMetadata(url, metaDataEndpoint) {
-      // Remove any trailing slash from the URL
-      const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-    
-      // Split the trimmed URL by '/' and get the last part: The id
-      const parts = trimmedUrl.split('/');
-      const id = parts[parts.length - 1];
-    
-      // Replace the placeholder in metaDataEndpoint with the actual id
-      const placeholderPattern = /{([^}]+)}/;
-      const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
-    
-      // Fetch metadata from the API endpoint
-      const metaDataResponse = await fetch(metaDataEndpointWithId);
-      const metadata = await metaDataResponse.json();
-      return metadata;
+    // Updated function to request metadata with necessary headers for authentication
+    async function requestMetadata(url, metaDataEndpoint, env) {
+      try {
+        // Remove any trailing slash from the URL
+        const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+      
+        // Split the trimmed URL by '/' and get the last part: The id
+        const parts = trimmedUrl.split('/');
+        const id = parts[parts.length - 1];
+      
+        // Replace the placeholder in metaDataEndpoint with the actual id
+        const metaDataEndpointWithId = `${metaDataEndpoint}?product_id=${encodeURIComponent(id)}`;
+
+        // Set up headers with the API key and Bearer token from environment variables
+        const headers = new Headers({
+          "apikey": env.SUPABASE_API_KEY,  // Use the stored Supabase API key
+          "Authorization": `Bearer ${env.SUPABASE_AUTH_TOKEN}`, // Use the stored Supabase Bearer token
+          "Content-Type": "application/json"
+        });
+
+        // Fetch metadata from the API endpoint
+        const metaDataResponse = await fetch(metaDataEndpointWithId, { headers });
+
+        if (!metaDataResponse.ok) {
+          throw new Error(`Failed to fetch metadata: ${metaDataResponse.status} ${metaDataResponse.statusText}`);
+        }
+
+        const metadata = await metaDataResponse.json();
+        return metadata;
+
+      } catch (error) {
+        console.error("Error fetching metadata:", error);
+        return null; // Handle error gracefully
+      }
     }
 
     // Handle dynamic page requests
@@ -56,7 +74,7 @@ export default {
       // Fetch the source page content
       let source = await fetch(`${domainSource}${url.pathname}`);
 
-      const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
+      const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint, env);
       console.log("Metadata fetched:", metadata);
 
       // Create a custom header handler with the fetched metadata
@@ -69,8 +87,8 @@ export default {
 
     // Handle page data requests for the WeWeb app
     } else if (isPageData(url.pathname)) {
-      	console.log("Page data detected:", url.pathname);
-	console.log("Referer:", referer);
+      console.log("Page data detected:", url.pathname);
+      console.log("Referer:", referer);
 
       // Fetch the source data content
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
@@ -81,7 +99,7 @@ export default {
       if (pathname !== null) {
         const patternConfigForPageData = getPatternConfig(pathname);
         if (patternConfigForPageData) {
-          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
+          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint, env);
           console.log("Metadata fetched:", metadata);
 
           // Ensure nested objects exist in the source data
@@ -109,7 +127,7 @@ export default {
             sourceData.page.meta.keywords.en = metadata.keywords;
           }
 
-	  console.log("returning file: ", JSON.stringify(sourceData));
+          console.log("returning file: ", JSON.stringify(sourceData));
           // Return the modified JSON object
           return new Response(JSON.stringify(sourceData), {
             headers: { 'Content-Type': 'application/json' }
