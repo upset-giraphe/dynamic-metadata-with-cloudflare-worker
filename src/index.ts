@@ -226,4 +226,11 @@ class CustomHeaderHandler {
           console.log('Replacing og:description');
           element.setAttribute("content", this.metadata.description);
           break;
-        case "og
+        case "og:image":
+          console.log('Replacing og:image');
+          element.setAttribute("content", this.metadata.image);
+          break;
+      }
+    }
+  }
+}
