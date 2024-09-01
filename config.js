@@ -1,5 +1,5 @@
 export const config = {
-  domainSource: "https://quickcamera.ca", // Your WeWeb app preview link
+  domainSource: "https://de44a60c-0fc7-4e82-bf89-8d4b1b9e0fc9.weweb-preview.io", // Your WeWeb app preview link
   patterns: [
       {
           pattern: "/product/[^/]+",
