@@ -24,7 +24,9 @@ export default {
 
     // Function to check if the URL matches the dynamic page pattern
     function isDynamicPage(urlPath: string): boolean {
-      return getPatternConfig(urlPath) !== null;
+      const config = getPatternConfig(urlPath);
+      console.log(`URL: ${urlPath} - Dynamic page match: ${config !== null}`);
+      return config !== null;
     }
 
     // Function to check if the URL matches the page data pattern (For the WeWeb app)
@@ -42,7 +44,7 @@ export default {
         // Construct the endpoint with the product_id as a query parameter
         const metaDataEndpointWithId = `${metaDataEndpoint}?product_id=${encodeURIComponent(product_id)}`;
 
-        console.log("Metadata endpoint with ID:", metaDataEndpointWithId);
+        console.log("Requesting metadata from:", metaDataEndpointWithId);
 
         // Set up headers with the API token
         const headers = new Headers({
@@ -72,10 +74,22 @@ export default {
       console.log("Dynamic page detected:", url.pathname);
 
       const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint, env);
+      if (!metadata) {
+        console.error("No metadata found or error in fetching metadata.");
+        return new Response("Error fetching metadata", { status: 500 });
+      }
+
       console.log("Metadata fetched:", metadata);
 
       // Fetch the source page content
-      let source = await fetch(`${domainSource}${url.pathname}`);
+      let source;
+      try {
+        source = await fetch(`${domainSource}${url.pathname}`);
+        if (!source.ok) throw new Error(`Error fetching source content: ${source.status} ${source.statusText}`);
+      } catch (fetchError) {
+        console.error("Error fetching source page content:", fetchError);
+        return new Response("Error fetching source page", { status: 500 });
+      }
 
       const customHeaderHandler = new CustomHeaderHandler(metadata);
 
@@ -85,11 +99,30 @@ export default {
       console.log("Page data detected:", url.pathname);
 
       // Fetch the source data content
-      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
-      let sourceData = await sourceResponse.json();
+      let sourceResponse;
+      try {
+        sourceResponse = await fetch(`${domainSource}${url.pathname}`);
+        if (!sourceResponse.ok) throw new Error(`Error fetching source data: ${sourceResponse.status} ${sourceResponse.statusText}`);
+      } catch (fetchError) {
+        console.error("Error fetching source data content:", fetchError);
+        return new Response("Error fetching source data", { status: 500 });
+      }
+
+      let sourceData;
+      try {
+        sourceData = await sourceResponse.json();
+      } catch (jsonError) {
+        console.error("Error parsing source data JSON:", jsonError);
+        return new Response("Error parsing source data JSON", { status: 500 });
+      }
 
       const pathname = url.searchParams.get('path') + (url.searchParams.get('path').endsWith('/') ? '' : '/');
       const metadata = await requestMetadata(pathname, patternConfig.metaDataEndpoint, env);
+      if (!metadata) {
+        console.error("No metadata found or error in fetching metadata.");
+        return new Response("Error fetching metadata", { status: 500 });
+      }
+
       console.log("Metadata fetched:", metadata);
 
       // Update source data with the fetched metadata
@@ -123,11 +156,16 @@ export default {
 
     // If the URL does not match any patterns, fetch and return the original content
     console.log("Fetching original content for:", url.pathname);
-    const sourceUrl = new URL(`${domainSource}${url.pathname}`);
-    const sourceRequest = new Request(sourceUrl, request);
-    const sourceResponse = await fetch(sourceRequest);
-
-    return sourceResponse;
+    try {
+      const sourceUrl = new URL(`${domainSource}${url.pathname}`);
+      const sourceRequest = new Request(sourceUrl, request);
+      const sourceResponse = await fetch(sourceRequest);
+      if (!sourceResponse.ok) throw new Error(`Error fetching original content: ${sourceResponse.status} ${sourceResponse.statusText}`);
+      return sourceResponse;
+    } catch (error) {
+      console.error("Error fetching original content:", error);
+      return new Response("Error fetching original content", { status: 500 });
+    }
   }
 };
 
@@ -138,11 +176,11 @@ class CustomHeaderHandler {
   }
 
   element(element) {
-    if (element.tagName == "title") {
+    if (element.tagName === "title") {
       console.log('Replacing title tag content');
       element.setInnerContent(this.metadata.title);
     }
-    if (element.tagName == "meta") {
+    if (element.tagName === "meta") {
       const name = element.getAttribute("name");
       switch (name) {
         case "title":
@@ -188,11 +226,4 @@ class CustomHeaderHandler {
           console.log('Replacing og:description');
           element.setAttribute("content", this.metadata.description);
           break;
-        case "og:image":
-          console.log('Replacing og:image');
-          element.setAttribute("content", this.metadata.image);
-          break;
-      }
-    }
-  }
-}
+        case "og
