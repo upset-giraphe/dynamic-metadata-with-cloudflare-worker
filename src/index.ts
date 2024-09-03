@@ -8,24 +8,27 @@ export default {
 
     console.log("Worker started");
 
+    // Accessing environment variables for Supabase
+    const SUPABASE_API_KEY = env.SUPABASE_API_KEY;
+    const SUPABASE_AUTH_TOKEN = env.SUPABASE_AUTH_TOKEN;
+
     // Parse the request URL
     const url = new URL(request.url);
-    const referer = request.headers.get('Referer')
+    const referer = request.headers.get('Referer');
 
-   function getPatternConfig(url) {
-  for (const patternConfig of patterns) {
-    const regex = new RegExp(patternConfig.pattern);
-    let pathname = url + (url.endsWith('/') ? '' : '/');
-    console.log(`Checking pattern ${patternConfig.pattern} against pathname ${pathname}`); // Debug log
-    if (regex.test(pathname)) {
-      console.log(`Pattern matched: ${patternConfig.pattern}`); // Debug log
-      return patternConfig;
+    function getPatternConfig(url) {
+      for (const patternConfig of patterns) {
+        const regex = new RegExp(patternConfig.pattern);
+        let pathname = url + (url.endsWith('/') ? '' : '/');
+        console.log(`Checking pattern ${patternConfig.pattern} against pathname ${pathname}`); // Debug log
+        if (regex.test(pathname)) {
+          console.log(`Pattern matched: ${patternConfig.pattern}`); // Debug log
+          return patternConfig;
+        }
+      }
+      console.log('No pattern matched'); // Debug log
+      return null;
     }
-  }
-  console.log('No pattern matched'); // Debug log
-  return null;
-}
-
 
     // Function to check if the URL matches the page data pattern (For the WeWeb app)
     function isPageData(url) {
@@ -45,8 +48,13 @@ export default {
       const placeholderPattern = /{([^}]+)}/;
       const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
     
-      // Fetch metadata from the API endpoint
-      const metaDataResponse = await fetch(metaDataEndpointWithId);
+      // Fetch metadata from the Supabase API endpoint
+      const metaDataResponse = await fetch(metaDataEndpointWithId, {
+        headers: {
+          'apikey': SUPABASE_API_KEY,
+          'Authorization': `${SUPABASE_AUTH_TOKEN}`
+        }
+      });
       const metadata = await metaDataResponse.json();
       return metadata;
     }
@@ -72,8 +80,8 @@ export default {
 
     // Handle page data requests for the WeWeb app
     } else if (isPageData(url.pathname)) {
-      	console.log("Page data detected:", url.pathname);
-	console.log("Referer:", referer);
+      console.log("Page data detected:", url.pathname);
+      console.log("Referer:", referer);
 
       // Fetch the source data content
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
@@ -112,7 +120,7 @@ export default {
             sourceData.page.meta.keywords.en = metadata.keywords;
           }
 
-	  console.log("returning file: ", JSON.stringify(sourceData));
+          console.log("returning file: ", JSON.stringify(sourceData));
           // Return the modified JSON object
           return new Response(JSON.stringify(sourceData), {
             headers: { 'Content-Type': 'application/json' }
@@ -202,7 +210,6 @@ class CustomHeaderHandler {
         console.log('Removing noindex tag');
         element.remove();
       }
-	    
     }
   }
 }
