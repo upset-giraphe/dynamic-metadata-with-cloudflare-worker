@@ -12,17 +12,20 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer')
 
-    // Function to get the pattern configuration that matches the URL
-    function getPatternConfig(url) {
-      for (const patternConfig of patterns) {
-        const regex = new RegExp(patternConfig.pattern);
-        let pathname = url + (url.endsWith('/') ? '' : '/');
-        if (regex.test(pathname)) {
-          return patternConfig;
-        }
-      }
-      return null;
+   function getPatternConfig(url) {
+  for (const patternConfig of patterns) {
+    const regex = new RegExp(patternConfig.pattern);
+    let pathname = url + (url.endsWith('/') ? '' : '/');
+    console.log(`Checking pattern ${patternConfig.pattern} against pathname ${pathname}`); // Debug log
+    if (regex.test(pathname)) {
+      console.log(`Pattern matched: ${patternConfig.pattern}`); // Debug log
+      return patternConfig;
     }
+  }
+  console.log('No pattern matched'); // Debug log
+  return null;
+}
+
 
     // Function to check if the URL matches the page data pattern (For the WeWeb app)
     function isPageData(url) {
