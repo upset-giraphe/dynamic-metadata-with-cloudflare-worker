@@ -2,18 +2,20 @@ import { config } from '../config.js';
 
 export default {
   async fetch(request, env, ctx) {
+    // Accessing environment variables for Supabase
+    const SUPABASE_API_KEY = env.SUPABASE_API_KEY;
+    const SUPABASE_AUTH_TOKEN = env.SUPABASE_AUTH_TOKEN;
+
+    // Determine the environment (optional)
+    const ENVIRONMENT = env.ENVIRONMENT || 'production'; // Set 'development' in dev environment
+
     // Extracting configuration values
     const domainSource = config.domainSource;
     const patterns = config.patterns;
 
     console.log("Worker started");
-
-    // Accessing environment variables for Supabase
-    const SUPABASE_API_KEY = env.SUPABASE_API_KEY;
-    const SUPABASE_AUTH_TOKEN = env.SUPABASE_AUTH_TOKEN;
-
-		console.log('SUPABASE_API_KEY is accessible:', SUPABASE_API_KEY ? 'Yes' : 'No');
-		console.log('SUPABASE_AUTH_TOKEN is accessible:', SUPABASE_AUTH_TOKEN ? 'Yes' : 'No');
+    console.log('SUPABASE_API_KEY is accessible:', SUPABASE_API_KEY ? 'Yes' : 'No');
+    console.log('SUPABASE_AUTH_TOKEN is accessible:', SUPABASE_AUTH_TOKEN ? 'Yes' : 'No');
 
     // Parse the request URL
     const url = new URL(request.url);
@@ -34,7 +36,7 @@ export default {
 
     // Function to check if the URL matches the page data pattern (For the WeWeb app)
     function isPageData(pathname) {
-      const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
+      const pattern = /\/public\/data\/[a-f0-9-]+\.json/;
       return pattern.test(pathname);
     }
 
@@ -42,9 +44,21 @@ export default {
       // Remove any trailing slash from the URL
       const trimmedUrl = urlPathname.replace(/\/$/, '');
 
-      // Extract the product ID from the URL
+      // Split the URL into parts
       const parts = trimmedUrl.split('/');
-      const id = parts[parts.length - 1];
+
+      let id;
+
+      // Determine the ID based on the URL structure
+      if (trimmedUrl.startsWith('/product/')) {
+        // Production URL structure: /product/{id}/
+        id = parts[2]; // Index 0: '', Index 1: 'product', Index 2: '{id}'
+      } else if (trimmedUrl.startsWith('/ww/cms_data_sets/')) {
+        // Dev URL structure: /ww/cms_data_sets/{id}/fetch
+        id = parts[3]; // Index 0: '', Index 1: 'ww', Index 2: 'cms_data_sets', Index 3: '{id}'
+      } else {
+        throw new Error('Unrecognized URL structure for metadata extraction');
+      }
 
       console.log('Fetching metadata for id:', id);
 
@@ -94,7 +108,8 @@ export default {
 
       // Transform the source HTML with the custom headers
       return new HTMLRewriter()
-        .on('*', customHeaderHandler)
+        .on('title', customHeaderHandler)
+        .on('meta', customHeaderHandler)
         .transform(source);
 
     // Handle page data requests for the WeWeb app
@@ -106,9 +121,9 @@ export default {
       const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
       let sourceData = await sourceResponse.json();
 
-      let pathname = referer;
-      pathname = pathname ? new URL(pathname).pathname : null;
-      if (pathname !== null) {
+      if (referer) {
+        const refererUrl = new URL(referer);
+        const pathname = refererUrl.pathname;
         const patternConfigForPageData = getPatternConfig(pathname);
         if (patternConfigForPageData) {
           let metadata;
@@ -153,8 +168,17 @@ export default {
           return new Response(JSON.stringify(sourceData), {
             headers: { 'Content-Type': 'application/json' }
           });
+        } else {
+          console.log('No pattern matched for referer pathname');
         }
+      } else {
+        console.error('Referer header is missing');
       }
+
+      // Return the original content if no pattern matched or referer is missing
+      return new Response(JSON.stringify(sourceData), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // If the URL does not match any patterns, fetch and return the original content
