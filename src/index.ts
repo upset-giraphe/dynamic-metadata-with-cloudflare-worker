@@ -16,10 +16,9 @@ export default {
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
 
-    function getPatternConfig(url) {
+    function getPatternConfig(pathname) {
       for (const patternConfig of patterns) {
         const regex = new RegExp(patternConfig.pattern);
-        let pathname = url + (url.endsWith('/') ? '' : '/');
         console.log(`Checking pattern ${patternConfig.pattern} against pathname ${pathname}`); // Debug log
         if (regex.test(pathname)) {
           console.log(`Pattern matched: ${patternConfig.pattern}`); // Debug log
@@ -31,32 +30,42 @@ export default {
     }
 
     // Function to check if the URL matches the page data pattern (For the WeWeb app)
-    function isPageData(url) {
+    function isPageData(pathname) {
       const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
-      return pattern.test(url);
+      return pattern.test(pathname);
     }
 
-    async function requestMetadata(url, metaDataEndpoint) {
+    async function requestMetadata(urlPathname, metaDataEndpoint) {
       // Remove any trailing slash from the URL
-      const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-    
-      // Split the trimmed URL by '/' and get the last part: The id
+      const trimmedUrl = urlPathname.replace(/\/$/, '');
+
+      // Extract the product ID from the URL
       const parts = trimmedUrl.split('/');
       const id = parts[parts.length - 1];
-    
-      // Replace the placeholder in metaDataEndpoint with the actual id
-      const placeholderPattern = /{([^}]+)}/;
-      const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
-    
-      // Fetch metadata from the Supabase API endpoint
-      const metaDataResponse = await fetch(metaDataEndpointWithId, {
+
+      console.log('Fetching metadata for id:', id);
+
+      // Fetch metadata from the Supabase RPC endpoint
+      const metaDataResponse = await fetch(metaDataEndpoint, {
+        method: 'POST', // Use POST method for RPC calls
         headers: {
           'apikey': SUPABASE_API_KEY,
-          'Authorization': `${SUPABASE_AUTH_TOKEN}`
-        }
+          'Authorization': `Bearer ${SUPABASE_AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: id }), // Pass the ID in the body as JSON
       });
+
+      if (!metaDataResponse.ok) {
+        console.error('Error fetching metadata:', metaDataResponse.statusText);
+        throw new Error(`Error fetching metadata: ${metaDataResponse.statusText}`);
+      }
+
       const metadata = await metaDataResponse.json();
-      return metadata;
+      console.log('Metadata response:', metadata);
+
+      // Assuming the metadata is returned as an array, extract the first item
+      return Array.isArray(metadata) ? metadata[0] : metadata;
     }
 
     // Handle dynamic page requests
@@ -65,10 +74,17 @@ export default {
       console.log("Dynamic page detected:", url.pathname);
 
       // Fetch the source page content
-      let source = await fetch(`${domainSource}${url.pathname}`);
+      const source = await fetch(`${domainSource}${url.pathname}`);
 
-      const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
-      console.log("Metadata fetched:", metadata);
+      let metadata;
+      try {
+        metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
+        console.log("Metadata fetched:", metadata);
+      } catch (error) {
+        console.error('Error fetching metadata:', error);
+        // Handle the error as needed, possibly return the source content without modification
+        return source;
+      }
 
       // Create a custom header handler with the fetched metadata
       const customHeaderHandler = new CustomHeaderHandler(metadata);
@@ -88,12 +104,21 @@ export default {
       let sourceData = await sourceResponse.json();
 
       let pathname = referer;
-      pathname = pathname ? pathname + (pathname.endsWith('/') ? '' : '/') : null;
+      pathname = pathname ? pathname.replace(/\/$/, '') : null;
       if (pathname !== null) {
-        const patternConfigForPageData = getPatternConfig(pathname);
+        const patternConfigForPageData = getPatternConfig(new URL(pathname).pathname);
         if (patternConfigForPageData) {
-          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
-          console.log("Metadata fetched:", metadata);
+          let metadata;
+          try {
+            metadata = await requestMetadata(new URL(pathname).pathname, patternConfigForPageData.metaDataEndpoint);
+            console.log("Metadata fetched:", metadata);
+          } catch (error) {
+            console.error('Error fetching metadata:', error);
+            // Handle the error as needed
+            return new Response(JSON.stringify(sourceData), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
 
           // Ensure nested objects exist in the source data
           sourceData.page = sourceData.page || {};
@@ -120,7 +145,7 @@ export default {
             sourceData.page.meta.keywords.en = metadata.keywords;
           }
 
-          console.log("returning file: ", JSON.stringify(sourceData));
+          console.log("Returning modified page data");
           // Return the modified JSON object
           return new Response(JSON.stringify(sourceData), {
             headers: { 'Content-Type': 'application/json' }
@@ -147,68 +172,98 @@ class CustomHeaderHandler {
 
   element(element) {
     // Replace the <title> tag content
-    if (element.tagName == "title") {
+    if (element.tagName === "title") {
       console.log('Replacing title tag content');
-      element.setInnerContent(this.metadata.title);
+      if (this.metadata.title) {
+        element.setInnerContent(this.metadata.title);
+      }
     }
     // Replace meta tags content
-    if (element.tagName == "meta") {
+    if (element.tagName === "meta") {
       const name = element.getAttribute("name");
-      switch (name) {
-        case "title":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "image":
-          element.setAttribute("content", this.metadata.image);
-          break;
-        case "keywords":
-          element.setAttribute("content", this.metadata.keywords);
-          break;
-        case "twitter:title":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "twitter:description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-      }
-
+      const property = element.getAttribute("property");
       const itemprop = element.getAttribute("itemprop");
-      switch (itemprop) {
-        case "name":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "image":
-          element.setAttribute("content", this.metadata.image);
-          break;
+
+      if (name) {
+        switch (name) {
+          case "title":
+          case "twitter:title":
+            if (this.metadata.title) {
+              element.setAttribute("content", this.metadata.title);
+            }
+            break;
+          case "description":
+          case "twitter:description":
+            if (this.metadata.description) {
+              element.setAttribute("content", this.metadata.description);
+            }
+            break;
+          case "image":
+            if (this.metadata.image) {
+              element.setAttribute("content", this.metadata.image);
+            }
+            break;
+          case "keywords":
+            if (this.metadata.keywords) {
+              element.setAttribute("content", this.metadata.keywords);
+            }
+            break;
+          case "robots":
+            if (element.getAttribute("content") === "noindex") {
+              console.log('Removing noindex tag');
+              element.remove();
+            }
+            break;
+          default:
+            break;
+        }
       }
 
-      const type = element.getAttribute("property");
-      switch (type) {
-        case "og:title":
-          console.log('Replacing og:title');
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "og:description":
-          console.log('Replacing og:description');
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "og:image":
-          console.log('Replacing og:image');
-          element.setAttribute("content", this.metadata.image);
-          break;
+      if (itemprop) {
+        switch (itemprop) {
+          case "name":
+            if (this.metadata.title) {
+              element.setAttribute("content", this.metadata.title);
+            }
+            break;
+          case "description":
+            if (this.metadata.description) {
+              element.setAttribute("content", this.metadata.description);
+            }
+            break;
+          case "image":
+            if (this.metadata.image) {
+              element.setAttribute("content", this.metadata.image);
+            }
+            break;
+          default:
+            break;
+        }
       }
 
-      // Remove the noindex meta tag
-      const robots = element.getAttribute("name");
-      if (robots === "robots" && element.getAttribute("content") === "noindex") {
-        console.log('Removing noindex tag');
-        element.remove();
+      if (property) {
+        switch (property) {
+          case "og:title":
+            console.log('Replacing og:title');
+            if (this.metadata.title) {
+              element.setAttribute("content", this.metadata.title);
+            }
+            break;
+          case "og:description":
+            console.log('Replacing og:description');
+            if (this.metadata.description) {
+              element.setAttribute("content", this.metadata.description);
+            }
+            break;
+          case "og:image":
+            console.log('Replacing og:image');
+            if (this.metadata.image) {
+              element.setAttribute("content", this.metadata.image);
+            }
+            break;
+          default:
+            break;
+        }
       }
     }
   }
