@@ -1,9 +1,5 @@
 import { config } from '../config.js';
 
-// At the beginning of your fetch handler
-console.log('SUPABASE_API_KEY is defined:', !!SUPABASE_API_KEY);
-console.log('SUPABASE_AUTH_TOKEN is defined:', !!SUPABASE_AUTH_TOKEN);
-
 export default {
   async fetch(request, env, ctx) {
     // Extracting configuration values
