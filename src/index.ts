@@ -1,220 +1,181 @@
-import { config } from '../config.js';
+// index.ts
 
 export default {
-  async fetch(request, env, ctx) {
-    // Extracting configuration values
-    const domainSource = config.domainSource;
-    const patterns = config.patterns;
-
-    console.log("Worker started");
+  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
+    // Access environment variables
+    const SUPABASE_URL = env.SUPABASE_URL;
+    const SUPABASE_API_KEY = env.SUPABASE_API_KEY;
+    const SUPABASE_AUTH_TOKEN = env.SUPABASE_AUTH_TOKEN;
 
     // Parse the request URL
     const url = new URL(request.url);
-    const referer = request.headers.get('Referer')
 
-    // Function to get the pattern configuration that matches the URL
-    function getPatternConfig(url) {
-      for (const patternConfig of patterns) {
-        const regex = new RegExp(patternConfig.pattern);
-        let pathname = url + (url.endsWith('/') ? '' : '/');
-        if (regex.test(pathname)) {
-          return patternConfig;
+    // Exclude asset and API requests
+    const excludedExtensions = [
+      '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
+      '.woff', '.woff2', '.ttf', '.eot', '.otf', '.json', '.pdf'
+    ];
+    const apiPrefixes = ['/api/', '/ww/'];
+
+    function isAssetRequest(pathname: string): boolean {
+      return excludedExtensions.some(ext => pathname.endsWith(ext));
+    }
+
+    function isApiRequest(pathname: string): boolean {
+      return apiPrefixes.some(prefix => pathname.startsWith(prefix));
+    }
+
+    if (isAssetRequest(url.pathname) || isApiRequest(url.pathname)) {
+      // Return the original content for assets and APIs
+      return fetch(request);
+    }
+
+    // Determine if the request is for a dynamic page
+    const dynamicPagePattern = /^\/product\/([a-f0-9-]+)\/?$/;
+    const match = url.pathname.match(dynamicPagePattern);
+
+    if (match) {
+      // Extract the product ID from the URL
+      const productId = match[1];
+      console.log('Processing dynamic page for product ID:', productId);
+
+      // Fetch the original HTML content
+      const originResponse = await fetch(request);
+
+      // Clone the response to read its body
+      const responseClone = originResponse.clone();
+      const originalHtml = await responseClone.text();
+
+      // Fetch metadata from Supabase
+      let metadata;
+      try {
+        metadata = await fetchMetadata(productId, SUPABASE_URL, SUPABASE_API_KEY, SUPABASE_AUTH_TOKEN);
+        if (!metadata) {
+          console.log('No metadata found, returning original content');
+          return originResponse;
         }
+        console.log('Metadata fetched:', metadata);
+      } catch (error) {
+        console.error('Error fetching metadata:', error);
+        return originResponse;
       }
-      return null;
+
+      // Use HTMLRewriter to inject metadata
+      const rewriter = new HTMLRewriter()
+        .on('title', new TitleHandler(metadata))
+        .on('meta', new MetaHandler(metadata));
+
+      // Return the modified HTML response
+      return new Response(rewriter.transform(originResponse).body, originResponse);
+    } else {
+      // For all other requests, return the original content
+      return fetch(request);
     }
-
-    // Function to check if the URL matches the page data pattern (For the WeWeb app)
-    function isPageData(url) {
-      const pattern = /\/public\/data\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json/;
-      return pattern.test(url);
-    }
-
-    async function requestMetadata(url, metaDataEndpoint) {
-      // Remove any trailing slash from the URL
-      const trimmedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-    
-      // Split the trimmed URL by '/' and get the last part: The id
-      const parts = trimmedUrl.split('/');
-      const id = parts[parts.length - 1];
-    
-      // Replace the placeholder in metaDataEndpoint with the actual id
-      const placeholderPattern = /{([^}]+)}/;
-      const metaDataEndpointWithId = metaDataEndpoint.replace(placeholderPattern, id);
-    
-      // Fetch metadata from the API endpoint
-      const metaDataResponse = await fetch(metaDataEndpointWithId);
-      const metadata = await metaDataResponse.json();
-      return metadata;
-    }
-
-    // Handle dynamic page requests
-    const patternConfig = getPatternConfig(url.pathname);
-    if (patternConfig) {
-      console.log("Dynamic page detected:", url.pathname);
-
-      // Fetch the source page content
-      let source = await fetch(`${domainSource}${url.pathname}`);
-
-      // Remove "X-Robots-Tag" from the headers
-      const sourceHeaders = new Headers(source.headers);
-      sourceHeaders.delete('X-Robots-Tag');
-      source = new Response(source.body, {
-        status: source.status,
-        headers: sourceHeaders
-      });
-
-      const metadata = await requestMetadata(url.pathname, patternConfig.metaDataEndpoint);
-      console.log("Metadata fetched:", metadata);
-
-      // Create a custom header handler with the fetched metadata
-      const customHeaderHandler = new CustomHeaderHandler(metadata);
-
-      // Transform the source HTML with the custom headers
-      return new HTMLRewriter()
-        .on('*', customHeaderHandler)
-        .transform(source);
-
-    // Handle page data requests for the WeWeb app
-    } else if (isPageData(url.pathname)) {
-      	console.log("Page data detected:", url.pathname);
-	console.log("Referer:", referer);
-
-      // Fetch the source data content
-      const sourceResponse = await fetch(`${domainSource}${url.pathname}`);
-      let sourceData = await sourceResponse.json();
-
-      let pathname = referer;
-      pathname = pathname ? pathname + (pathname.endsWith('/') ? '' : '/') : null;
-      if (pathname !== null) {
-        const patternConfigForPageData = getPatternConfig(pathname);
-        if (patternConfigForPageData) {
-          const metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
-          console.log("Metadata fetched:", metadata);
-
-          // Ensure nested objects exist in the source data
-          sourceData.page = sourceData.page || {};
-          sourceData.page.title = sourceData.page.title || {};
-          sourceData.page.meta = sourceData.page.meta || {};
-          sourceData.page.meta.desc = sourceData.page.meta.desc || {};
-          sourceData.page.meta.keywords = sourceData.page.meta.keywords || {};
-          sourceData.page.socialTitle = sourceData.page.socialTitle || {};
-          sourceData.page.socialDesc = sourceData.page.socialDesc || {};
-
-          // Update source data with the fetched metadata
-          if (metadata.title) {
-            sourceData.page.title.en = metadata.title;
-            sourceData.page.socialTitle.en = metadata.title;
-          }
-          if (metadata.description) {
-            sourceData.page.meta.desc.en = metadata.description;
-            sourceData.page.socialDesc.en = metadata.description;
-          }
-          if (metadata.image) {
-            sourceData.page.metaImage = metadata.image;
-          }
-          if (metadata.keywords) {
-            sourceData.page.meta.keywords.en = metadata.keywords;
-          }
-
-	  console.log("returning file: ", JSON.stringify(sourceData));
-          // Return the modified JSON object
-          return new Response(JSON.stringify(sourceData), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      }
-    }
-
-    // If the URL does not match any patterns, fetch and return the original content
-    console.log("Fetching original content for:", url.pathname);
-    const sourceUrl = new URL(`${domainSource}${url.pathname}`);
-    const sourceRequest = new Request(sourceUrl, request);
-    const sourceResponse = await fetch(sourceRequest);
-
-    // Create a new response without the "X-Robots-Tag" header
-    const modifiedHeaders = new Headers(sourceResponse.headers);
-    modifiedHeaders.delete('X-Robots-Tag');
-
-    return new Response(sourceResponse.body, {
-      status: sourceResponse.status,
-      headers: modifiedHeaders,
-    });
   }
 };
 
-// CustomHeaderHandler class to modify HTML content based on metadata
-class CustomHeaderHandler {
-  constructor(metadata) {
+// Function to fetch metadata from Supabase
+async function fetchMetadata(
+  id: string,
+  supabaseUrl: string,
+  supabaseApiKey: string,
+  supabaseAuthToken: string
+): Promise<any> {
+  const url = `${supabaseUrl}/rest/v1/rpc/get_product_meta`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': supabaseApiKey,
+      'Authorization': `Bearer ${supabaseAuthToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id: id }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Supabase error:', response.status, response.statusText, errorText);
+    return null;
+  }
+
+  const data = await response.json();
+  // Assuming the data is returned as an array
+  return Array.isArray(data) ? data[0] : data;
+}
+
+// Handler for modifying the <title> tag
+class TitleHandler {
+  metadata: any;
+
+  constructor(metadata: any) {
     this.metadata = metadata;
   }
 
-  element(element) {
-    // Replace the <title> tag content
-    if (element.tagName == "title") {
-      console.log('Replacing title tag content');
+  element(element: Element) {
+    if (this.metadata.title) {
       element.setInnerContent(this.metadata.title);
     }
-    // Replace meta tags content
-    if (element.tagName == "meta") {
-      const name = element.getAttribute("name");
-      switch (name) {
-        case "title":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "image":
-          element.setAttribute("content", this.metadata.image);
-          break;
-        case "keywords":
-          element.setAttribute("content", this.metadata.keywords);
-          break;
-        case "twitter:title":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "twitter:description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-      }
+  }
+}
 
-      const itemprop = element.getAttribute("itemprop");
-      switch (itemprop) {
-        case "name":
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "description":
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "image":
-          element.setAttribute("content", this.metadata.image);
-          break;
-      }
+// Handler for modifying <meta> tags
+class MetaHandler {
+  metadata: any;
 
-      const type = element.getAttribute("property");
-      switch (type) {
-        case "og:title":
-          console.log('Replacing og:title');
-          element.setAttribute("content", this.metadata.title);
-          break;
-        case "og:description":
-          console.log('Replacing og:description');
-          element.setAttribute("content", this.metadata.description);
-          break;
-        case "og:image":
-          console.log('Replacing og:image');
-          element.setAttribute("content", this.metadata.image);
-          break;
-      }
+  constructor(metadata: any) {
+    this.metadata = metadata;
+  }
 
-      // Remove the noindex meta tag
-      const robots = element.getAttribute("name");
-      if (robots === "robots" && element.getAttribute("content") === "noindex") {
-        console.log('Removing noindex tag');
-        element.remove();
+  element(element: Element) {
+    const nameAttr = element.getAttribute('name');
+    const propertyAttr = element.getAttribute('property');
+
+    if (nameAttr) {
+      switch (nameAttr) {
+        case 'description':
+          if (this.metadata.description) {
+            element.setAttribute('content', this.metadata.description);
+          }
+          break;
+        case 'keywords':
+          if (this.metadata.keywords) {
+            element.setAttribute('content', this.metadata.keywords);
+          }
+          break;
+        case 'robots':
+          // Ensure 'noindex' is present
+          let content = element.getAttribute('content') || '';
+          if (!content.includes('noindex')) {
+            content += (content ? ', ' : '') + 'noindex';
+            element.setAttribute('content', content);
+          }
+          break;
+        default:
+          break;
       }
-	    
+    }
+
+    if (propertyAttr) {
+      switch (propertyAttr) {
+        case 'og:title':
+          if (this.metadata.title) {
+            element.setAttribute('content', this.metadata.title);
+          }
+          break;
+        case 'og:description':
+          if (this.metadata.description) {
+            element.setAttribute('content', this.metadata.description);
+          }
+          break;
+        case 'og:image':
+          if (this.metadata.image) {
+            element.setAttribute('content', this.metadata.image);
+          }
+          break;
+        default:
+          break;
+      }
     }
   }
 }
