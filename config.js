@@ -4,11 +4,6 @@ export const config = {
     {
       pattern: "^/product/[^/]+/?$",
       metaDataEndpoint: "https://lfbxzrylbkxjryzvftv.supabase.co/rest/v1/rpc/get_product_meta"
-    },
-    // Pattern for dev URLs
-    {
-      pattern: "^/ww/cms_data_sets/[^/]+/fetch/?$",
-      metaDataEndpoint: "https://lfbxzrylbkxjryzvftv.supabase.co/rest/v1/rpc/get_product_meta"
     }
   ]
 };
