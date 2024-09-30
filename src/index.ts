@@ -36,37 +36,37 @@ export default {
     }
 
     async function requestMetadata(urlPathname, metaDataEndpoint) {
-		  // Remove any trailing slash from the URL
-		  const trimmedUrl = urlPathname.replace(/\/$/, '');
-		
-		  // Extract the product ID from the URL
-		  const parts = trimmedUrl.split('/');
-		  const id = parts[parts.length - 1];
-		
-		  console.log('Fetching metadata for id:', id);
-		
-		  // Fetch metadata from the Supabase RPC endpoint
-		  const metaDataResponse = await fetch(metaDataEndpoint, {
-		    method: 'POST', // Use POST method for RPC calls
-		    headers: {
-		      'apikey': SUPABASE_API_KEY,
-		      'Authorization': `Bearer ${SUPABASE_AUTH_TOKEN}`,
-		      'Content-Type': 'application/json',
-		    },
-		    body: JSON.stringify({ id: id }), // Pass the ID in the body as JSON
-		  });
-		
-		  if (!metaDataResponse.ok) {
-		    console.error('Error fetching metadata:', metaDataResponse.statusText);
-		    throw new Error(`Error fetching metadata: ${metaDataResponse.statusText}`);
-		  }
-		
-		  const metadata = await metaDataResponse.json();
-		  console.log('Metadata response:', metadata);
-		
-		  // Assuming the metadata is returned as an array, extract the first item
-		  return Array.isArray(metadata) ? metadata[0] : metadata;
-		}
+      // Remove any trailing slash from the URL
+      const trimmedUrl = urlPathname.replace(/\/$/, '');
+
+      // Extract the product ID from the URL
+      const parts = trimmedUrl.split('/');
+      const id = parts[parts.length - 1];
+
+      console.log('Fetching metadata for id:', id);
+
+      // Fetch metadata from the Supabase RPC endpoint
+      const metaDataResponse = await fetch(metaDataEndpoint, {
+        method: 'POST', // Use POST method for RPC calls
+        headers: {
+          'apikey': SUPABASE_API_KEY,
+          'Authorization': `Bearer ${SUPABASE_AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: id }), // Pass the ID in the body as JSON
+      });
+
+      if (!metaDataResponse.ok) {
+        console.error('Error fetching metadata:', metaDataResponse.statusText);
+        throw new Error(`Error fetching metadata: ${metaDataResponse.statusText}`);
+      }
+
+      const metadata = await metaDataResponse.json();
+      console.log('Metadata response:', metadata);
+
+      // Assuming the metadata is returned as an array, extract the first item
+      return Array.isArray(metadata) ? metadata[0] : metadata;
+    }
 
     // Handle dynamic page requests
     const patternConfig = getPatternConfig(url.pathname);
@@ -82,7 +82,7 @@ export default {
         console.log("Metadata fetched:", metadata);
       } catch (error) {
         console.error('Error fetching metadata:', error);
-        // Handle the error as needed, possibly return the source content without modification
+        // Return the original content if metadata fetch fails
         return source;
       }
 
@@ -104,17 +104,17 @@ export default {
       let sourceData = await sourceResponse.json();
 
       let pathname = referer;
-      pathname = pathname ? pathname.replace(/\/$/, '') : null;
+      pathname = pathname ? new URL(pathname).pathname : null;
       if (pathname !== null) {
-        const patternConfigForPageData = getPatternConfig(new URL(pathname).pathname);
+        const patternConfigForPageData = getPatternConfig(pathname);
         if (patternConfigForPageData) {
           let metadata;
           try {
-            metadata = await requestMetadata(new URL(pathname).pathname, patternConfigForPageData.metaDataEndpoint);
+            metadata = await requestMetadata(pathname, patternConfigForPageData.metaDataEndpoint);
             console.log("Metadata fetched:", metadata);
           } catch (error) {
             console.error('Error fetching metadata:', error);
-            // Handle the error as needed
+            // Return the original content if metadata fetch fails
             return new Response(JSON.stringify(sourceData), {
               headers: { 'Content-Type': 'application/json' }
             });
