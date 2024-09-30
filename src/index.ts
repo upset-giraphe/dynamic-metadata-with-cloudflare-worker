@@ -12,6 +12,9 @@ export default {
     const SUPABASE_API_KEY = env.SUPABASE_API_KEY;
     const SUPABASE_AUTH_TOKEN = env.SUPABASE_AUTH_TOKEN;
 
+		console.log('SUPABASE_API_KEY is accessible:', SUPABASE_API_KEY ? 'Yes' : 'No');
+		console.log('SUPABASE_AUTH_TOKEN is accessible:', SUPABASE_AUTH_TOKEN ? 'Yes' : 'No');
+
     // Parse the request URL
     const url = new URL(request.url);
     const referer = request.headers.get('Referer');
