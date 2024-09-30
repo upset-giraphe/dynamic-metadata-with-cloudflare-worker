@@ -1,5 +1,5 @@
 #:schema node_modules/wrangler/config-schema.json
-name = "weweb-dynamic-metadata"
+name = "dynamic-metadata-with-cloudflare-worker"
 main = "src/index.ts"
 compatibility_date = "2024-04-19"
 compatibility_flags = ["nodejs_compat"]
@@ -10,8 +10,10 @@ compatibility_flags = ["nodejs_compat"]
 # Note: Use secrets to store sensitive data.
 # - https://developers.cloudflare.com/workers/configuration/secrets/
 [vars]
-SUPABASE_API_KEY = "$SUPABASE_API_KEY"
-SUPABASE_AUTH_TOKEN = "$SUPABASE_AUTH_TOKEN"
+SUPABASE_URL = "https://lfbxzrylbkxjryzvftv.supabase.co"
+
+[triggers]
+routes = ["quickcamera.ca/*", "www.quickcamera.ca/*"]
 
 # Bind the Workers AI model catalog. Run machine learning models, powered by serverless GPUs, on Cloudflare’s global network
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#workers-ai
